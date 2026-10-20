@@ -6,12 +6,27 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $Token,
 
-    [string] $Version = $(if ($env:CRONPULSER_RUNNER_VERSION) { $env:CRONPULSER_RUNNER_VERSION } else { "0.3.2" }),
-    [string] $DownloadBaseUrl = $(if ($env:CRONPULSER_DOWNLOAD_BASE_URL) { $env:CRONPULSER_DOWNLOAD_BASE_URL } else { "https://downloads.cronpulser.com/runner" }),
+    [string] $Version = $(if ($env:CRONPULSER_RUNNER_VERSION) { $env:CRONPULSER_RUNNER_VERSION } else { "0.3.3" }),
+    [string] $DownloadBaseUrl = $env:CRONPULSER_DOWNLOAD_BASE_URL,
     [string] $BinaryPath
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Version -notmatch "^[0-9A-Za-z._-]+$") {
+    throw "Invalid version: $Version"
+}
+
+# Releases from 0.3.3 on are built by GitHub Actions and published as GitHub
+# Releases. Older versions remain on the CronPulser download host. A custom
+# base URL uses the layout {base}/{version}/{file}.
+if ($DownloadBaseUrl) {
+    $releaseUrl = "$($DownloadBaseUrl.TrimEnd("/"))/$Version"
+} elseif ($Version -in @("0.3.1", "0.3.2")) {
+    $releaseUrl = "https://downloads.cronpulser.com/runner/$Version"
+} else {
+    $releaseUrl = "https://github.com/cronpulser/cronpulser-runner/releases/download/v$Version"
+}
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -33,13 +48,12 @@ try {
 
         $fileName = "cronpulser-runner-windows-amd64.exe"
         $runnerBinary = Join-Path $temporaryDirectory $fileName
-        $baseUrl = $DownloadBaseUrl.TrimEnd("/")
-        $binaryUrl = "$baseUrl/$Version/$fileName"
+        $binaryUrl = "$releaseUrl/$fileName"
         $checksumsPath = Join-Path $temporaryDirectory "SHA256SUMS"
 
         Write-Host "Downloading $binaryUrl"
         Invoke-WebRequest -UseBasicParsing -Uri $binaryUrl -OutFile $runnerBinary
-        Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/$Version/SHA256SUMS" -OutFile $checksumsPath
+        Invoke-WebRequest -UseBasicParsing -Uri "$releaseUrl/SHA256SUMS" -OutFile $checksumsPath
 
         $checksumLine = Get-Content -LiteralPath $checksumsPath | Where-Object { $_ -match "\s+$([regex]::Escape($fileName))$" } | Select-Object -First 1
         if (-not $checksumLine -or $checksumLine -notmatch "^([0-9a-fA-F]{64})\s+") {

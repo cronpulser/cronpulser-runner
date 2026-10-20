@@ -1,8 +1,13 @@
 #!/bin/sh
 set -eu
 
-DOWNLOAD_BASE_URL="${CRONPULSER_DOWNLOAD_BASE_URL:-https://downloads.cronpulser.com/runner}"
-VERSION="${CRONPULSER_RUNNER_VERSION:-0.3.2}"
+# Releases from 0.3.3 on are built by GitHub Actions and published as GitHub
+# Releases. Older versions remain on the CronPulser download host. A custom
+# base URL uses the layout {base}/{version}/{file}.
+GITHUB_RELEASES_URL="https://github.com/cronpulser/cronpulser-runner/releases/download"
+LEGACY_DOWNLOAD_URL="https://downloads.cronpulser.com/runner"
+DOWNLOAD_BASE_URL="${CRONPULSER_DOWNLOAD_BASE_URL:-}"
+VERSION="${CRONPULSER_RUNNER_VERSION:-0.3.3}"
 BINARY_PATH=""
 SERVER=""
 TOKEN=""
@@ -26,6 +31,19 @@ done
 if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
   usage
   exit 2
+fi
+
+case "$VERSION" in
+  ''|*[!0-9A-Za-z._-]*) echo "Invalid version: $VERSION" >&2; exit 2 ;;
+esac
+
+if [ -n "$DOWNLOAD_BASE_URL" ]; then
+  RELEASE_URL="${DOWNLOAD_BASE_URL%/}/$VERSION"
+else
+  case "$VERSION" in
+    0.3.1|0.3.2) RELEASE_URL="$LEGACY_DOWNLOAD_URL/$VERSION" ;;
+    *) RELEASE_URL="$GITHUB_RELEASES_URL/v$VERSION" ;;
+  esac
 fi
 
 if [ "$(uname -s)" != "Linux" ]; then
@@ -63,8 +81,8 @@ else
   TEMP_DIR=$(mktemp -d)
   RUNNER_BINARY="$TEMP_DIR/cronpulser-runner"
   FILE_NAME="cronpulser-runner-linux-$ARCH"
-  URL="${DOWNLOAD_BASE_URL%/}/$VERSION/$FILE_NAME"
-  CHECKSUM_URL="${DOWNLOAD_BASE_URL%/}/$VERSION/SHA256SUMS"
+  URL="$RELEASE_URL/$FILE_NAME"
+  CHECKSUM_URL="$RELEASE_URL/SHA256SUMS"
   CHECKSUM_FILE="$TEMP_DIR/SHA256SUMS"
   echo "Downloading $URL"
   curl -fsSL "$URL" -o "$RUNNER_BINARY"

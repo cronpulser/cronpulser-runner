@@ -9,7 +9,7 @@ CronPulser owns scheduling. The runner executes only job keys registered in its
 local YAML configuration and returns lifecycle events, stdout, stderr, exit
 code, and duration.
 
-Current release: `0.3.2`. Documentation: https://cronpulser.com/docs/runner/
+Current release: `0.3.3`. Documentation: https://cronpulser.com/docs/runner/
 
 ## Build locally
 
@@ -17,7 +17,7 @@ From the repository root (requires Go 1.26 or later; `go.mod` pins the
 toolchain used for releases):
 
 ```bash
-VERSION=0.3.2 ./scripts/build.sh
+VERSION=0.3.3 ./scripts/build.sh
 ```
 
 This creates:
@@ -61,9 +61,10 @@ For development, the shell installer can use a local binary without a download h
   --binary-path ./dist/cronpulser-runner-linux-amd64
 ```
 
-The public installer downloads the selected version from
-`https://downloads.cronpulser.com/runner/{version}/`. It downloads the
-release's `SHA256SUMS` file and refuses to execute the binary unless its
+The public installer downloads the selected version from this repository's
+GitHub Releases (`releases/download/v{version}/`); versions 0.3.1 and 0.3.2 are
+served from `https://downloads.cronpulser.com/runner/{version}/`. It downloads
+the release's `SHA256SUMS` file and refuses to execute the binary unless its
 SHA-256 digest matches. The customer command is:
 
 ```bash
@@ -71,7 +72,7 @@ curl -fsSL https://downloads.cronpulser.com/runner/install-runner.sh | \
 sudo sh -s -- \
   --server https://api.cronpulser.com \
   --token cp_runner_xxxxxxxxx \
-  --version 0.3.2
+  --version 0.3.3
 ```
 
 ## Install on Windows Server
@@ -84,7 +85,7 @@ Invoke-WebRequest https://downloads.cronpulser.com/runner/install-runner.ps1 -Ou
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-runner.ps1 `
   -Server https://api.cronpulser.com `
   -Token cp_runner_xxxxxxxxx `
-  -Version 0.3.2
+  -Version 0.3.3
 ```
 
 The installer verifies the release checksum, installs the binary under
@@ -96,17 +97,30 @@ For a locally built binary, pass
 `-BinaryPath .\dist\cronpulser-runner-windows-amd64.exe` to the PowerShell
 installer.
 
-## Package a release
+## Releases
 
-Build the binaries, then create an immutable release directory:
+From 0.3.3 on, releases are built by GitHub Actions from a `v*` tag
+(`.github/workflows/release.yml`). The workflow runs the tests, builds the
+three binaries, writes `SHA256SUMS`, records build provenance, and publishes
+everything with both installers as a GitHub Release.
+
+Verify that a downloaded binary was built by this repository's workflow:
 
 ```bash
-VERSION=0.3.2 ./scripts/build.sh
-./scripts/package-release.sh 0.3.2 /tmp/cronpulser-downloads
+gh attestation verify cronpulser-runner-linux-amd64 --repo cronpulser/cronpulser-runner
 ```
 
-The package contains all three binaries, `SHA256SUMS`, and the stable Linux
-and Windows installers.
+To cut a release, set the new default version in `install-runner.sh` and
+`install-runner.ps1` (the workflow refuses a tag that does not match), then
+push the tag `v{version}`.
+
+To package a release locally instead:
+
+```bash
+VERSION=0.3.3 ./scripts/build.sh
+./scripts/package-release.sh 0.3.3 /tmp/cronpulser-downloads
+```
+
 The packaging script refuses to replace an existing version directory.
 
 ## Configure jobs
