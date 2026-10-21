@@ -7,7 +7,7 @@ set -eu
 GITHUB_RELEASES_URL="https://github.com/cronpulser/cronpulser-runner/releases/download"
 LEGACY_DOWNLOAD_URL="https://downloads.cronpulser.com/runner"
 DOWNLOAD_BASE_URL="${CRONPULSER_DOWNLOAD_BASE_URL:-}"
-VERSION="${CRONPULSER_RUNNER_VERSION:-0.3.3}"
+VERSION="${CRONPULSER_RUNNER_VERSION:-0.3.4}"
 BINARY_PATH=""
 SERVER=""
 TOKEN=""

@@ -69,7 +69,9 @@ func Run(parent context.Context, executionID string, job config.Job) protocol.Me
 		exitCode = -1
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) {
-			exitCode = exitError.ExitCode()
+			// Windows exit codes are unsigned 32-bit values; report them
+			// signed, as Windows tools do; the server stores them as INT.
+			exitCode = int(int32(exitError.ExitCode()))
 		}
 		text := fmt.Sprintf("%s returned exit code %d", job.Command, exitCode)
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {

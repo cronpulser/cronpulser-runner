@@ -9,7 +9,7 @@ CronPulser owns scheduling. The runner executes only job keys registered in its
 local YAML configuration and returns lifecycle events, stdout, stderr, exit
 code, and duration.
 
-Current release: `0.3.3`. Documentation: https://cronpulser.com/docs/runner/
+Current release: `0.3.4`. Documentation: https://cronpulser.com/docs/runner/
 
 ## Build locally
 
@@ -17,7 +17,7 @@ From the repository root (requires Go 1.26 or later; `go.mod` pins the
 toolchain used for releases):
 
 ```bash
-VERSION=0.3.3 ./scripts/build.sh
+VERSION=0.3.4 ./scripts/build.sh
 ```
 
 This creates:
@@ -72,7 +72,7 @@ curl -fsSL https://downloads.cronpulser.com/runner/install-runner.sh | \
 sudo sh -s -- \
   --server https://api.cronpulser.com \
   --token cp_runner_xxxxxxxxx \
-  --version 0.3.3
+  --version 0.3.4
 ```
 
 ## Install on Windows Server
@@ -85,7 +85,7 @@ Invoke-WebRequest https://downloads.cronpulser.com/runner/install-runner.ps1 -Ou
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-runner.ps1 `
   -Server https://api.cronpulser.com `
   -Token cp_runner_xxxxxxxxx `
-  -Version 0.3.3
+  -Version 0.3.4
 ```
 
 The installer verifies the release checksum, installs the binary under
@@ -117,15 +117,21 @@ push the tag `v{version}`.
 To package a release locally instead:
 
 ```bash
-VERSION=0.3.3 ./scripts/build.sh
-./scripts/package-release.sh 0.3.3 /tmp/cronpulser-downloads
+VERSION=0.3.4 ./scripts/build.sh
+./scripts/package-release.sh 0.3.4 /tmp/cronpulser-downloads
 ```
 
 The packaging script refuses to replace an existing version directory.
 
 ## Configure jobs
 
-Edit `/etc/cronpulser/runner.yaml`:
+Edit `/etc/cronpulser/runner.yaml` as root (`sudo nano /etc/cronpulser/runner.yaml`);
+on Windows, edit `C:\ProgramData\CronPulser\runner.yaml` from an Administrator
+session. A fresh installation contains `jobs: {}`: replace that line with your
+jobs instead of adding a second `jobs:` key. A step-by-step first test job for
+Linux and Windows is in the
+[setup guide](https://cronpulser.com/docs/runner/#first-job-linux).
+
 
 ```yaml
 server: https://api.cronpulser.com
@@ -151,13 +157,19 @@ jobs:
       - -NoProfile
       - -NonInteractive
       - -File
-      - C:\Scripts\backup.ps1
-    workingDirectory: C:\Scripts
+      - C:\ProgramData\CronPulser\scripts\backup.ps1
+    workingDirectory: C:\ProgramData\CronPulser\scripts
     timeout: 5m
 ```
 
-Grant `LOCAL SERVICE` read and execute access to each script and its working
-directory. Keeping arguments separate avoids command-shell parsing and quoting
+Create the scripts folder so only Administrators and SYSTEM can change it and
+`LOCAL SERVICE` can read and run it (a folder directly under `C:\` lets every
+signed-in user change its files):
+
+```powershell
+icacls C:\ProgramData\CronPulser\scripts /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-19:(OI)(CI)RX"
+```
+ Keeping arguments separate avoids command-shell parsing and quoting
 ambiguities.
 
 Then validate and restart:
@@ -222,6 +234,39 @@ The duplicate-execution cache is stored at
 `/var/lib/cronpulser/executions.json` on Linux and
 `C:\ProgramData\CronPulser\state\executions.json` on Windows. It survives
 service and machine restarts.
+
+## Uninstall
+
+In CronPulser, delete or reassign the jobs that use the Runner (a Runner with
+scheduled jobs cannot be deleted), then delete the Runner, which revokes its
+credential. Then remove it from the machine. Your own scripts are not touched.
+
+Linux:
+
+```bash
+sudo systemctl disable --now cronpulser-runner
+sudo rm -f /etc/systemd/system/cronpulser-runner.service /usr/local/bin/cronpulser-runner
+sudo systemctl daemon-reload
+sudo rm -rf /etc/cronpulser /var/lib/cronpulser
+sudo userdel cronpulser
+```
+
+Windows Server (PowerShell as Administrator):
+
+```powershell
+Stop-Service CronPulserRunner
+sc.exe delete CronPulserRunner
+Remove-EventLog -Source CronPulserRunner
+Remove-Item -Recurse -Force 'C:\Program Files\CronPulser', 'C:\ProgramData\CronPulser'
+```
+
+This also deletes `C:\ProgramData\CronPulser\scripts`; copy your scripts
+elsewhere first to keep them.
+
+Running the installer again on a machine that already has a Runner does not
+upgrade it: on Linux it registers a new Runner and rewrites `runner.yaml`, on
+Windows it stops because the service exists. Uninstall first for a clean
+reinstall.
 
 ## Security boundaries
 

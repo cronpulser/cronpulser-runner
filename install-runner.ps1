@@ -6,7 +6,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $Token,
 
-    [string] $Version = $(if ($env:CRONPULSER_RUNNER_VERSION) { $env:CRONPULSER_RUNNER_VERSION } else { "0.3.3" }),
+    [string] $Version = $(if ($env:CRONPULSER_RUNNER_VERSION) { $env:CRONPULSER_RUNNER_VERSION } else { "0.3.4" }),
     [string] $DownloadBaseUrl = $env:CRONPULSER_DOWNLOAD_BASE_URL,
     [string] $BinaryPath
 )
