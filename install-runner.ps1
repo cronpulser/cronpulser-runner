@@ -1,17 +1,25 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
     [string] $Server,
 
-    [Parameter(Mandatory = $true)]
     [string] $Token,
 
-    [string] $Version = $(if ($env:CRONPULSER_RUNNER_VERSION) { $env:CRONPULSER_RUNNER_VERSION } else { "0.3.4" }),
+    [switch] $Upgrade,
+
+    [string] $Version = $(if ($env:CRONPULSER_RUNNER_VERSION) { $env:CRONPULSER_RUNNER_VERSION } else { "0.3.5" }),
     [string] $DownloadBaseUrl = $env:CRONPULSER_DOWNLOAD_BASE_URL,
     [string] $BinaryPath
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Upgrade) {
+    if ($Server -or $Token) {
+        throw "-Upgrade keeps the existing registration; do not pass -Server or -Token."
+    }
+} elseif (-not $Server -or -not $Token) {
+    throw "Usage: install-runner.ps1 -Server URL -Token TOKEN [-Version VERSION], or install-runner.ps1 -Upgrade [-Version VERSION]"
+}
 
 if ($Version -notmatch "^[0-9A-Za-z._-]+$") {
     throw "Invalid version: $Version"
@@ -67,9 +75,16 @@ try {
         Write-Host "Verified SHA-256: $actualHash"
     }
 
-    & $runnerBinary install --server $Server --token $Token
-    if ($LASTEXITCODE -ne 0) {
-        throw "CronPulser Runner installation failed with exit code $LASTEXITCODE."
+    if ($Upgrade) {
+        & $runnerBinary upgrade
+        if ($LASTEXITCODE -ne 0) {
+            throw "CronPulser Runner upgrade failed with exit code $LASTEXITCODE."
+        }
+    } else {
+        & $runnerBinary install --server $Server --token $Token
+        if ($LASTEXITCODE -ne 0) {
+            throw "CronPulser Runner installation failed with exit code $LASTEXITCODE."
+        }
     }
 } finally {
     if ($temporaryDirectory -and (Test-Path -LiteralPath $temporaryDirectory)) {

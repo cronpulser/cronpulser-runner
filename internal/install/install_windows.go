@@ -5,7 +5,6 @@ package install
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,36 +55,14 @@ func requireAdministrator() error {
 }
 
 func copyBinary(destination string) error {
-	source, err := os.Executable()
+	source, err := currentExecutable()
 	if err != nil {
 		return err
 	}
-	source, _ = filepath.EvalSymlinks(source)
 	if strings.EqualFold(source, destination) {
 		return nil
 	}
-	input, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer input.Close()
-	if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
-		return err
-	}
-	temporary := destination + ".tmp"
-	output, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0755)
-	if err != nil {
-		return err
-	}
-	_, copyErr := io.Copy(output, input)
-	closeErr := output.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return os.Rename(temporary, destination)
+	return copyFile(source, destination)
 }
 
 func grantServiceAccess(configDirectory, stateDirectory string) error {
@@ -212,6 +189,111 @@ func Rotate(options RotateOptions) error {
 	}
 	if options.RestartService {
 		return restartService()
+	}
+	return nil
+}
+
+// Upgrade replaces the installed binary with the running one. Windows cannot
+// overwrite a running executable, so the service is stopped for the swap. The
+// config, credentials, jobs and execution cache are not touched. If the
+// service does not stay running, the previous binary is restored.
+func Upgrade(options UpgradeOptions) error {
+	if err := requireAdministrator(); err != nil {
+		return err
+	}
+	if options.ConfigPath == "" {
+		options.ConfigPath = config.DefaultPath
+	}
+	if options.BinaryPath == "" {
+		options.BinaryPath = DefaultBinaryPath
+	}
+	if _, err := os.Stat(options.BinaryPath); err != nil {
+		return fmt.Errorf("no installed Runner at %s; use install instead: %w", options.BinaryPath, err)
+	}
+	// The new binary must accept the existing config before anything changes.
+	if _, err := config.Load(options.ConfigPath); err != nil {
+		return fmt.Errorf("existing config is not valid for version %s, nothing was changed: %w", options.Version, err)
+	}
+	source, err := currentExecutable()
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(source, options.BinaryPath) {
+		return errors.New("run upgrade from the downloaded binary, not the installed one")
+	}
+	manager, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("connect to service manager: %w", err)
+	}
+	defer manager.Disconnect()
+	service, err := manager.OpenService(serviceName)
+	if err != nil {
+		return fmt.Errorf("CronPulser Runner service is not installed; use install instead: %w", err)
+	}
+	defer service.Close()
+	previousVersion := installedVersion(options.BinaryPath)
+	if options.RestartService {
+		if err := stopService(service); err != nil {
+			return fmt.Errorf("stop Windows service: %w", err)
+		}
+	}
+	previous := previousBinaryPath(options.BinaryPath)
+	if err := copyFile(options.BinaryPath, previous); err != nil {
+		return fmt.Errorf("keep previous binary: %w", err)
+	}
+	if err := copyFile(source, options.BinaryPath); err != nil {
+		if options.RestartService {
+			_ = service.Start()
+		}
+		return fmt.Errorf("install binary: %w", err)
+	}
+	if options.RestartService {
+		if err := startAndWatch(service); err != nil {
+			_ = stopService(service)
+			if restoreErr := copyFile(previous, options.BinaryPath); restoreErr != nil {
+				return fmt.Errorf("%w; restoring the previous binary also failed: %v", err, restoreErr)
+			}
+			if startErr := service.Start(); startErr != nil {
+				return fmt.Errorf("%w; previous binary restored but the service did not start: %v", err, startErr)
+			}
+			return fmt.Errorf("%w; previous version %s restored and started (check the Windows Application event log)", err, previousVersion)
+		}
+	}
+	fmt.Printf("CronPulser Runner upgraded\nVersion: %s -> %s\nConfig unchanged: %s\nPrevious binary: %s\n", previousVersion, options.Version, options.ConfigPath, previous)
+	return nil
+}
+
+func stopService(service *mgr.Service) error {
+	status, err := service.Query()
+	if err != nil {
+		return err
+	}
+	if status.State == svc.Stopped {
+		return nil
+	}
+	if _, err := service.Control(svc.Stop); err != nil {
+		return err
+	}
+	return waitForServiceState(service, svc.Stopped, 20*time.Second)
+}
+
+func startAndWatch(service *mgr.Service) error {
+	if err := service.Start(); err != nil {
+		return err
+	}
+	if err := waitForServiceState(service, svc.Running, 20*time.Second); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(upgradeHealthWindow)
+	for time.Now().Before(deadline) {
+		time.Sleep(500 * time.Millisecond)
+		status, err := service.Query()
+		if err != nil {
+			return err
+		}
+		if status.State != svc.Running {
+			return errors.New("the upgraded service did not stay running")
+		}
 	}
 	return nil
 }

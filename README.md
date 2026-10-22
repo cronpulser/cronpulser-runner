@@ -9,7 +9,7 @@ CronPulser owns scheduling. The runner executes only job keys registered in its
 local YAML configuration and returns lifecycle events, stdout, stderr, exit
 code, and duration.
 
-Current release: `0.3.4`. Documentation: https://cronpulser.com/docs/runner/
+Current release: `0.3.5`. Documentation: https://cronpulser.com/docs/runner/
 
 ## Build locally
 
@@ -17,7 +17,7 @@ From the repository root (requires Go 1.26 or later; `go.mod` pins the
 toolchain used for releases):
 
 ```bash
-VERSION=0.3.4 ./scripts/build.sh
+VERSION=0.3.5 ./scripts/build.sh
 ```
 
 This creates:
@@ -72,7 +72,7 @@ curl -fsSL https://downloads.cronpulser.com/runner/install-runner.sh | \
 sudo sh -s -- \
   --server https://api.cronpulser.com \
   --token cp_runner_xxxxxxxxx \
-  --version 0.3.4
+  --version 0.3.5
 ```
 
 ## Install on Windows Server
@@ -85,7 +85,7 @@ Invoke-WebRequest https://downloads.cronpulser.com/runner/install-runner.ps1 -Ou
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-runner.ps1 `
   -Server https://api.cronpulser.com `
   -Token cp_runner_xxxxxxxxx `
-  -Version 0.3.4
+  -Version 0.3.5
 ```
 
 The installer verifies the release checksum, installs the binary under
@@ -117,8 +117,8 @@ push the tag `v{version}`.
 To package a release locally instead:
 
 ```bash
-VERSION=0.3.4 ./scripts/build.sh
-./scripts/package-release.sh 0.3.4 /tmp/cronpulser-downloads
+VERSION=0.3.5 ./scripts/build.sh
+./scripts/package-release.sh 0.3.5 /tmp/cronpulser-downloads
 ```
 
 The packaging script refuses to replace an existing version directory.
@@ -193,6 +193,32 @@ result is stored locally and sent once the runner reconnects, exactly once.
 If the runner itself restarts during a job, that execution is reported as
 failed after the restart.
 
+## Upgrade
+
+Upgrading keeps the registration, credentials, `runner.yaml` jobs and the
+execution cache. No token is needed. The installer downloads and verifies the
+release, then the new binary runs `upgrade`:
+
+```bash
+curl -fsSL https://downloads.cronpulser.com/runner/install-runner.sh | \
+sudo sh -s -- --upgrade --version 0.3.5
+```
+
+```powershell
+Invoke-WebRequest https://downloads.cronpulser.com/runner/install-runner.ps1 -OutFile .\install-runner.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-runner.ps1 -Upgrade -Version 0.3.5
+```
+
+`upgrade` first loads the existing `runner.yaml` with the new version and
+stops without changes if it is not valid. It keeps the current binary as
+`cronpulser-runner.previous` (`cronpulser-runner.previous.exe` on Windows),
+replaces it, and restarts the service; on Windows the service is stopped
+during the swap because a running executable cannot be replaced. If the
+service does not stay running for six seconds, the previous binary is restored
+and restarted. A job that is running during the restart is reported as failed,
+so upgrade between runs. The Runner page shows the new version once it
+reconnects.
+
 ## Rotate credentials
 
 Generate a one-time rotation token from the Runners page, then apply it on the
@@ -245,7 +271,7 @@ Linux:
 
 ```bash
 sudo systemctl disable --now cronpulser-runner
-sudo rm -f /etc/systemd/system/cronpulser-runner.service /usr/local/bin/cronpulser-runner
+sudo rm -f /etc/systemd/system/cronpulser-runner.service /usr/local/bin/cronpulser-runner /usr/local/bin/cronpulser-runner.previous
 sudo systemctl daemon-reload
 sudo rm -rf /etc/cronpulser /var/lib/cronpulser
 sudo userdel cronpulser
@@ -263,10 +289,9 @@ Remove-Item -Recurse -Force 'C:\Program Files\CronPulser', 'C:\ProgramData\CronP
 This also deletes `C:\ProgramData\CronPulser\scripts`; copy your scripts
 elsewhere first to keep them.
 
-Running the installer again on a machine that already has a Runner does not
-upgrade it: on Linux it registers a new Runner and rewrites `runner.yaml`, on
-Windows it stops because the service exists. Uninstall first for a clean
-reinstall.
+Running the installer again without `--upgrade` does not upgrade a Runner:
+on Linux it registers a new Runner and rewrites `runner.yaml`, on Windows it
+stops because the service exists. Use [Upgrade](#upgrade) instead.
 
 ## Security boundaries
 

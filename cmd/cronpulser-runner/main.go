@@ -17,7 +17,7 @@ import (
 var version = "dev"
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Usage: cronpulser-runner <install|rotate|run|validate|status|version> [options]")
+	fmt.Fprintln(os.Stderr, "Usage: cronpulser-runner <install|upgrade|rotate|run|validate|status|version> [options]")
 }
 
 func main() {
@@ -29,6 +29,8 @@ func main() {
 	switch os.Args[1] {
 	case "install":
 		err = installCommand(os.Args[2:])
+	case "upgrade":
+		err = upgradeCommand(os.Args[2:])
 	case "rotate":
 		err = rotateCommand(os.Args[2:])
 	case "run":
@@ -58,6 +60,17 @@ func rotateCommand(arguments []string) error {
 		return err
 	}
 	return installer.Rotate(installer.RotateOptions{Token: *token, ConfigPath: *configPath, Version: version, RestartService: !*skipService})
+}
+
+func upgradeCommand(arguments []string) error {
+	flags := flag.NewFlagSet("upgrade", flag.ContinueOnError)
+	configPath := flags.String("config", config.DefaultPath, "configuration path")
+	binaryPath := flags.String("binary-destination", installer.DefaultBinaryPath, "installed binary path")
+	skipService := flags.Bool("skip-service", false, "replace the binary without restarting the service (development only)")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	return installer.Upgrade(installer.UpgradeOptions{ConfigPath: *configPath, BinaryPath: *binaryPath, Version: version, RestartService: !*skipService})
 }
 
 func installCommand(arguments []string) error {

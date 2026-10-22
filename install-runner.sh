@@ -7,13 +7,15 @@ set -eu
 GITHUB_RELEASES_URL="https://github.com/cronpulser/cronpulser-runner/releases/download"
 LEGACY_DOWNLOAD_URL="https://downloads.cronpulser.com/runner"
 DOWNLOAD_BASE_URL="${CRONPULSER_DOWNLOAD_BASE_URL:-}"
-VERSION="${CRONPULSER_RUNNER_VERSION:-0.3.4}"
+VERSION="${CRONPULSER_RUNNER_VERSION:-0.3.5}"
 BINARY_PATH=""
 SERVER=""
 TOKEN=""
+UPGRADE=0
 
 usage() {
   echo "Usage: install-runner.sh --server URL --token TOKEN [--version VERSION] [--download-base-url URL] [--binary-path PATH]" >&2
+  echo "       install-runner.sh --upgrade [--version VERSION] [--download-base-url URL] [--binary-path PATH]" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -23,12 +25,18 @@ while [ "$#" -gt 0 ]; do
     --version) VERSION="${2:-}"; shift 2 ;;
     --download-base-url) DOWNLOAD_BASE_URL="${2:-}"; shift 2 ;;
     --binary-path) BINARY_PATH="${2:-}"; shift 2 ;;
+    --upgrade) UPGRADE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
   esac
 done
 
-if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
+if [ "$UPGRADE" = 1 ]; then
+  if [ -n "$SERVER" ] || [ -n "$TOKEN" ]; then
+    echo "--upgrade keeps the existing registration; do not pass --server or --token." >&2
+    exit 2
+  fi
+elif [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
   usage
   exit 2
 fi
@@ -110,4 +118,8 @@ else
 fi
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
-$SUDO "$RUNNER_BINARY" install --server "$SERVER" --token "$TOKEN"
+if [ "$UPGRADE" = 1 ]; then
+  $SUDO "$RUNNER_BINARY" upgrade
+else
+  $SUDO "$RUNNER_BINARY" install --server "$SERVER" --token "$TOKEN"
+fi
